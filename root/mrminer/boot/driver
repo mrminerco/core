@@ -1,0 +1,139 @@
+#!/bin/bash
+
+## REMOVE xorg.conf
+if [ -e "/etc/X11/xorg.conf" ]; then
+ 	rm -rf /etc/X11/xorg.conf
+fi
+
+## LOAD globals.inc
+if [ -e "/run/mrminer/globals.inc" ]; then
+
+ 	. /run/mrminer/globals.inc
+
+else 
+	
+	generate_globals | sudo tee /run/mrminer/globals.inc > /dev/null 2>&1 &
+ 	sleep 0.2
+ 	. /run/mrminer/globals.inc
+fi
+
+sleep 0.1
+
+IGPU=$(lspci |grep "VGA" |grep -v AMD |grep -v NVIDIA | wc -l)
+
+## LOAD drivers
+if [ "$GPU_COUNT_AMD" -gt 0 ]; then	
+
+
+	if [ "$IGPU" -gt "0" ]; then
+		if [ $(lspci -k | grep "VGA" | grep -ci "intel") -eq "1" ];then
+			IGPUDRIVER="intel"
+		elif [ $(lspci -k | grep "VGA" | grep -ci "aspeed") -eq "1" ];then
+			IGPUDRIVER="ast"
+		else
+			IGPUDRIVER="modesetting"
+		fi
+		PCI=$(lspci | grep VGA | grep -v AMD | grep -v NVIDIA | cut -d " " -f 1)
+		BUS="BusID          \"PCI:$((16#${PCI:0:2})):$((16#${PCI:4:1})):$((16#${PCI:6:1}))\""
+		LAST=$(cat /etc/X11/xorg.conf | grep "Screen    " | tail -1 | tr -s ' '| cut -d ' ' -f 3)
+		NEWSCREEN=$(( LAST + 1 ))
+		# sed -i "/    Screen .*${LAST}/a\    Screen      $NEWSCREEN  \"Screen0\" RightOf \"Screen$NEWSCREEN\"" /etc/X11/xorg.conf
+		# sed -i "s/Screen      0  \"Screen0\"/Screen      0  \"Screen$NEWSCREEN\"/g" /etc/X11/xorg.conf
+		cat << EOF | sudo tee -a /etc/X11/xorg.conf > /dev/null
+Section "Monitor"
+	Identifier     "Monitor$NEWSCREEN"	
+	VendorName     "Unknown"
+	ModelName      "Unknown"
+	Option         "DPMS"
+EndSection
+
+Section "Device"
+	Identifier     "Device$NEWSCREEN"
+	Driver         "$IGPUDRIVER"
+	Option         "AccelMethod" "sna"
+	VendorName     "iGPU"
+	BoardName      "iGPU"
+	$BUS
+EndSection
+
+Section "Screen"
+	Identifier     "Screen$NEWSCREEN"
+	Device         "Device$NEWSCREEN"
+	Monitor        "Monitor$NEWSCREEN"
+	DefaultDepth    24
+	SubSection     "Display"
+		Depth       24
+	EndSubSection
+EndSection
+EOF
+
+	else 
+		cp /home/mrminer/xorg.conf.amd /etc/X11/xorg.conf
+	fi
+	
+
+	modprobe amdgpu
+
+	sudo rm -rf /run/mrminer/amd_tables && sudo mkdir /run/mrminer/amd_tables
+	i=0
+	while [ $i -le 14 ]; do
+	    if [ -e "/sys/class/drm/card$i/device/pp_table" ]; then
+	        sudo mkdir /run/mrminer/amd_tables/card$i
+	        sudo cp /sys/class/drm/card$i/device/pp_table /run/mrminer/amd_tables/card$i/pp_table
+			sync
+	    fi
+	    i=$[i + 1]
+	done
+
+else 
+
+    modprobe nvidia_drm modeset=1
+    modprobe nvidia
+    sleep 1
+
+    /usr/bin/sudo /usr/bin/nvidia-xconfig --preserve-busid --allow-empty-initial-configuration --cool-bits=31 --probe-all-gpus --no-sli -a
+    if [ "$IGPU" -gt "0" ]; then
+		if [ $(lspci -k | grep "VGA" | grep -ci "intel") -eq "1" ];then
+			IGPUDRIVER="intel"
+		elif [ $(lspci -k | grep "VGA" | grep -ci "aspeed") -eq "1" ];then
+			IGPUDRIVER="ast"
+		else
+			IGPUDRIVER="modesetting"
+		fi
+		PCI=$(lspci | grep VGA | grep -v AMD | grep -v NVIDIA | cut -d " " -f 1)
+		BUS="BusID          \"PCI:$((16#${PCI:0:2})):$((16#${PCI:4:1})):$((16#${PCI:6:1}))\""
+		LAST=$(cat /etc/X11/xorg.conf | grep "Screen    " | tail -1 | tr -s ' '| cut -d ' ' -f 3)
+		NEWSCREEN=$(( LAST + 1 ))
+		sed -i "/    Screen .*${LAST}/a\    Screen      $NEWSCREEN  \"Screen0\" RightOf \"Screen$NEWSCREEN\"" /etc/X11/xorg.conf
+		sed -i "s/Screen      0  \"Screen0\"/Screen      0  \"Screen$NEWSCREEN\"/g" /etc/X11/xorg.conf
+		cat << EOF | sudo tee -a /etc/X11/xorg.conf > /dev/null
+Section "Monitor"
+	Identifier     "Monitor$NEWSCREEN"	
+	VendorName     "Unknown"
+	ModelName      "Unknown"
+	Option         "DPMS"
+EndSection
+
+Section "Device"
+	Identifier     "Device$NEWSCREEN"
+	Driver         "$IGPUDRIVER"
+	Option         "AccelMethod" "sna"
+	VendorName     "iGPU"
+	BoardName      "iGPU"
+	$BUS
+EndSection
+
+Section "Screen"
+	Identifier     "Screen$NEWSCREEN"
+	Device         "Device$NEWSCREEN"
+	Monitor        "Monitor$NEWSCREEN"
+	DefaultDepth    24
+	SubSection     "Display"
+		Depth       24
+	EndSubSection
+EndSection
+EOF
+	fi
+
+fi 
+

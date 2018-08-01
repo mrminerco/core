@@ -1,0 +1,23 @@
+#!/bin/bash
+. /run/mrminer/globals.inc
+
+# Get Stats
+STATS=$(sudo /root/mrminer/tool/stats)
+
+# Send Stats
+sleep 0.2
+SEND=$(curl -s -k -d api="$API" -d email="$EMAIL" -d stats="$STATS" $URL/stats)
+
+
+STATUS=$(echo "$SEND" | jq -r .status)
+
+if [ -n "$STATUS" ]; then
+
+	TIME=$(date +"%T")
+
+	if [ "$STATUS" == "ok" ]; then
+	    DISPLAY=:0 notify-send "Synced to Mr.Miner" "$TIME" --icon=rabbitvcs-asynchronous
+	else
+	    DISPLAY=:0 notify-send "Failed to Sync" "$TIME" --icon=rabbitvcs-asynchronous
+	fi
+fi

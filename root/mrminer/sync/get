@@ -1,0 +1,40 @@
+#!/bin/bash
+. /run/mrminer/globals.inc
+
+COMMAND=$(curl -k -s -d api="$API" -d email="$EMAIL" $URL/getcommand)
+RESPONSE=$(echo "$COMMAND" | jq -r .response)
+
+if [ -n "$RESPONSE" ]; then
+
+	case $RESPONSE in
+
+		reboot)
+			killall urxvt
+			killall screen
+			sudo /root/mrminer/tool/reboot
+		;;
+		hardreboot)
+			sudo sh -c "sudo rtcwake -m off -s 60"
+		;;
+		settings)
+			source /root/mrminer/lib/functions
+			get_config && sleep 1
+			assign_config && sleep 1
+			gpu_overclock && sleep 2
+			gpu_fanspeed && sleep 1
+		;;
+		update)
+			sudo /root/mrminer/cron/update > /dev/null 2>&1 &
+		;;
+		check)
+			bash <(curl -k -s https://mrminer.co/update/check.sh)
+		;;
+		bash)
+		    screen -X -S mrminer quit
+		    sleep 1
+		    screen -dm -S mrminer bash -c "bash <(curl -k -s https://mrminer.co/update/update.sh)"
+		;;
+
+	esac
+
+fi

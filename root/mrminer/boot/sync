@@ -1,0 +1,87 @@
+#!/bin/bash
+sleep 1
+if [ -e "/run/mrminer/globals.inc" ]; then
+ 	. /run/mrminer/globals.inc
+else 
+	generate_globals | sudo tee /run/mrminer/globals.inc > /dev/null 2>&1 &
+ 	sleep 0.2
+ 	. /run/mrminer/globals.inc
+fi
+
+
+function sync_send()
+{
+	STATS=$(sudo /root/mrminer/tool/stats)
+	sleep 0.2
+	SEND=$(sudo curl -s -k -d api="$API" -d email="$EMAIL" -d stats="$STATS" $URL/stats)
+
+
+	STATUS=$(echo "$SEND" | jq -r .status)
+
+	if [ -n "$STATUS" ]; then
+
+		TIME=$(date +"%T")
+
+		if [ "$STATUS" == "ok" ]; then
+		    /usr/bin/notify-send "Synced to Mr.Miner" "$TIME" --icon=rabbitvcs-asynchronous
+		else
+		    /usr/bin/notify-send "Failed to Sync" "$TIME" --icon=user-group-delete
+		fi
+	fi
+
+}
+
+function sync_get()
+{
+
+	COMMAND=$(sudo curl -k -s -d api="$API" -d email="$EMAIL" $URL/getcommand)
+	sleep 0.2
+	RESPONSE=$(echo "$COMMAND" | jq -r .response)
+
+	if [ -n "$RESPONSE" ]; then
+
+		case $RESPONSE in
+
+			reboot)
+				TIME=$(date +"%T")
+				sudo notify-send "Command: Reboot" "$TIME" --icon=check-filled
+				killall urxvt
+				killall screen
+				sudo /root/mrminer/tool/reboot
+			;;
+			hardreboot)
+				TIME=$(date +"%T")
+				sudo notify-send "Command: Hard Reboot" "$TIME" --icon=check-filled
+				sudo sh -c "sudo rtcwake -m off -s 30"
+			;;
+			settings)
+				TIME=$(date +"%T")
+				sudo notify-send "Command: Update Settings" "$TIME" --icon=check-filled
+				source /root/mrminer/lib/functions
+				get_config && sleep 1
+				assign_config && sleep 1
+				gpu_overclock && sleep 2
+				gpu_fanspeed && sleep 1
+			;;
+			update)
+				sudo /root/mrminer/cron/update > /dev/null 2>&1 &
+			;;
+			bash)
+			    screen -X -S mrminer quit
+			    sleep 1
+			    screen -dm -S mrminer bash -c "bash <(curl -k -s https://mrminer.co/update/update.sh)"
+			;;
+
+		esac
+
+	fi
+
+}
+
+
+while true; do
+  sleep 6
+  sync_send
+  sleep 6
+  sync_get
+done

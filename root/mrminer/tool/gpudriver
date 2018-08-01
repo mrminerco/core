@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# rm /etc/X11/xorg.conf
+
+# modprobe amdgpu
+
+# cp /home/mrminer/xorg.conf.amd /etc/X11/xorg.conf
+
+# sleep 5
+
+if [ -e "/run/mrminer/globals.inc" ]; then
+	
+ 	source /run/mrminer/globals.inc
+ 	sleep 0.2
+
+ 	if [ "$GPU_COUNT_AMD" -gt 0 ]; then
+
+		rm /etc/X11/xorg.conf
+
+		modprobe amdgpu
+
+		cp /home/mrminer/xorg.conf.amd /etc/X11/xorg.conf
+
+		backup_amd_tables
+
+		sleep 1
+
+ 	fi
+
+fi
+
+
+#NV=$(lspci |grep "VGA" |grep "NVIDIA" | wc -l)
+
+#if [ "$NV" -gt "0" ]; then
+
+#	/usr/bin/sudo /usr/bin/nvidia-xconfig --preserve-busid --allow-empty-initial-configuration --cool-bits=31 --probe-all-gpus --no-sli -a
+#	sleep 2
+#fi 
+
+
+

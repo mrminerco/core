@@ -1,0 +1,82 @@
+#!/bin/bash
+
+## ask=`zenity --list --title="GPU Bios Import/Export" --column="0" "Import Bios" "Export Bios" "Exit" --width=400 --height=200 --hide-header`
+
+## WELCOME
+ASK=$(zenity --list --radiolist --title="GPU Bios Import/Export"\
+	--text "What do you want to do the GPU bios file?"\
+	--width=600 --height=200\
+	--hide-header \
+	--column "Type" --column "Item" FALSE "Import Bios (File to GPU)" FALSE "Export Bios (GPU to File)" FALSE "List Adapters")
+
+
+## FUNCTIONS
+function test()
+{
+	zenity --info --text "Thanks!"
+}
+
+function atiflash_export()
+{
+	GPUS=$(/root/mrminer/tool/amdmeminfo -s -o -q | sed 's/:/	/g' | tr '\n' ',')
+
+	IFS=',' read -r -a Arr <<< "$GPUS"
+
+	SELECT_GPU=$(zenity --list --text "Select GPU to Export Bios File" --width=800 --height=400 --column "GPU List" "${Arr[@]}")
+
+	SELECTED=$(echo $SELECT_GPU | awk '{print $1}' | grep -o -P 'GPU(\d+)' | cut -c4-)
+	echo "SELECTED GPU NUMBER: $SELECTED"
+
+	if [ $SELECTED -ge "0" ] &&  [ $SELECTED -le "9" ]; then
+
+		sudo /root/mrminer/tool/atiflash -s $SELECTED /home/mrminer/Desktop/GPU$SELECTED.rom | zenity --progress --title="Bios File Exporting..." --text="Saving Bios File: GPU$SELECTED.rom" --width=400 --height=100 --pulsate
+
+	fi
+
+}
+
+function atiflash_import()
+{
+	GPUS=$(sudo /root/mrminer/tool/amdmeminfo -s -o -q | sed 's/:/	/g' | tr '\n' ',')
+
+	IFS=',' read -r -a Arr <<< "$GPUS"
+
+	SELECT_GPU=$(sudo zenity --list --text "Select GPU to Export Bios File" --width=800 --height=400 --column "GPU List" "${Arr[@]}")
+	SELECTED=$(sudo echo $SELECT_GPU | awk '{print $1}' | grep -o -P 'GPU(\d+)' | cut -c4-)
+
+
+	if [ $SELECTED -ge "0" ] &&  [ $SELECTED -le "9" ]; then
+
+		sudo zenity --info --text="\n<b>GPU $SELECTED selected.</b>\n\nNow, you can select the ROM file to import into GPU$SELECTED." --ellipsize
+
+		SELECTED_FILE=$(sudo zenity --file-selection --title="Select File to Import into GPU")
+
+		ATIFLASH=$(sudo /root/mrminer/tool/atiflash -p $SELECTED $SELECTED_FILE)
+
+		sudo zenity --info --text="\n<b>Process completed. Result:</b>\n\n$ATIFLASH." --ellipsize
+
+	fi
+}
+
+function atiflash_list()
+{
+	LIST=$(sudo /root/mrminer/tool/atiflash -i)
+
+	sudo zenity --info --text="\n<b>AtiFlash</b>\n\n$LIST." --ellipsize
+}
+
+## MENU
+if [ "$ASK" == "Import Bios (File to GPU)" ]; then
+    atiflash_import
+fi
+
+if [ "$ASK" == "Export Bios (GPU to File)" ]; then
+    atiflash_export
+fi
+
+if [ "$ASK" == "List Adapters" ]; then
+    atiflash_list
+fi
+
+
+exit 0

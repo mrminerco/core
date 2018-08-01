@@ -1,0 +1,185 @@
+#!/bin/bash
+
+
+## PREPARE
+function prepare_folders()
+{
+	if [ -d "/run/mrminer" ]; then
+		rm -rf /run/mrminer
+		mkdir /run/mrminer
+	else
+		mkdir /run/mrminer
+	fi
+}
+
+function generate_xorg()
+{
+	echo "Xorg Config Generated."
+}
+
+
+function generate_globals()
+{
+	e=$(ifconfig | grep -ioE '([a-z0-9]{2}:){5}..' | sed 's/://g'); x=$(sudo dmidecode -s bios-version); p=$(sudo dmidecode -s system-uuid); l=$(sudo dmidecode -s system-serial-number); o=$(sudo dmidecode -s baseboard-serial-number); i=$(sudo dmidecode -s processor-version); t="iolpxe"
+	echo VERSION=$(sudo cat /root/mrminer/version)
+	echo URL="https://mrminer.co/api"
+	echo API=$(echo $e.$x.$p.$l.$o.$i.$t | sha256sum | awk '{print substr($0,16,32);exit}')
+	echo EMAIL=$(sudo cat /home/mrminer/email | grep EMAIL | head -n1 | cut -d = -f 2 | cut -d ' ' -f 1 | tr '[:upper:]' '[:lower:]' | tr -d '\r' | tr -d '\n')
+	echo GPU_COUNT_AMD=$(lspci | grep -E "VGA|3D controller" | grep AMD | wc -l)
+	echo GPU_COUNT_NV=$(lspci | grep -E "VGA|3D controller" | grep NVIDIA | wc -l)
+}
+
+if [ -e "/run/mrminer/globals.inc" ]; then
+ 	source /run/mrminer/globals.inc
+fi
+
+function connection_test()
+{
+	if nc -zw3 -i2 google.com 80; then
+        return 0
+	else
+        return 1
+	fi
+}
+
+function version_check()
+{ 
+	test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"; 
+}
+
+function update_check()
+{
+	GLOBAL_VERSION=$(curl -k -s $URL/version)
+	if version_check $GLOBAL_VERSION $VERSION; then
+		echo "Mr.Miner v$VERSION is not up-to-date. Update running..."
+		sudo /root/mrminer/tool/updateos
+	else
+		# echo "Mr.Miner v$VERSION is up-to-date." 
+		return 0
+	fi 
+}
+
+function register_server()
+{
+	REGISTER=$(curl -k -s -d api="$API" -d email="$EMAIL" -d version="$VERSION" $URL/register)
+	STATUS=$(echo "$REGISTER" | jq -r .status)
+
+	if [ -n "$STATUS" ]; then
+		if [ "$STATUS" == "ok" ]; then
+			return 0
+		else
+			return 1
+		fi
+	fi
+}
+
+function get_config()
+{
+	GETCONFIG=$(curl -k -s -d api="$API" -d email="$EMAIL" $URL/getconfig)
+	STATUS=$(echo "$GETCONFIG" | jq -r .status)
+
+	if [ -n "$STATUS" ]; then
+		if [ "$STATUS" == "ok" ]; then
+		    echo "$GETCONFIG" | sudo tee /home/mrminer/config.json > /dev/null 2>&1
+		    return 0
+		else
+		    return 1
+		fi
+	fi
+}
+
+function assign_config()
+{
+	CONFIG=/home/mrminer/config.json
+	
+	sudo echo MINER=\"$(cat $CONFIG | jq -r .miner)\" | sudo tee /run/mrminer/settings.inc > /dev/null 2>&1
+	sudo echo MINER_PATH=\"$(cat $CONFIG | jq -r .path)\" | sudo tee -a /run/mrminer/settings.inc > /dev/null 2>&1
+	sudo echo MINER_PARAMETER=\"$(cat $CONFIG | jq -r .config)\"| sudo tee -a /run/mrminer/settings.inc > /dev/null 2>&1
+	sudo echo CORE=\"$(cat $CONFIG | jq -r .core)\" | sudo tee -a /run/mrminer/settings.inc > /dev/null 2>&1
+	sudo echo MEMORY=\"$(cat $CONFIG | jq -r .memory)\" | sudo tee -a /run/mrminer/settings.inc > /dev/null 2>&1
+	sudo echo POWER=\"$(cat $CONFIG | jq -r .power)\" | sudo tee -a /run/mrminer/settings.inc > /dev/null 2>&1
+	sudo echo VOLT=\"$(cat $CONFIG | jq -r .volt)\" | sudo tee -a /run/mrminer/settings.inc > /dev/null 2>&1
+	sudo echo TEMP=\"$(cat $CONFIG | jq -r .temp)\" | sudo tee -a /run/mrminer/settings.inc > /dev/null 2>&1
+	sudo echo FAN=\"$(cat $CONFIG | jq -r .fan)\" | sudo tee -a /run/mrminer/settings.inc > /dev/null 2>&1
+	sudo echo CONFIGNAME=\"$(cat $CONFIG | jq -r .configname)\" | sudo tee -a /run/mrminer/settings.inc > /dev/null 2>&1
+	sudo echo MINER_FOLDER=\"$(dirname `cat $CONFIG | jq -r .path`)\"| sudo tee -a /run/mrminer/settings.inc > /dev/null 2>&1
+	#sudo echo TELECONSOLE_ID=$ID | sudo tee -a /run/mrminer/globals.inc > /dev/null 2>&1
+	sleep 0.2
+	if [ -e "/run/mrminer/settings.inc" ]; then
+	    return 0
+	else
+	    return 1
+	fi
+
+}
+
+function send_hardware()
+{
+	source /run/mrminer/globals.inc
+	GETHARDWARE=$(sudo /root/mrminer/tool/hardware)
+	sleep 0.5
+	HARDWARE=$(curl -k -s -d api="$API" -d email="$EMAIL" -d hardware="$GETHARDWARE" $URL/hardware)
+	STATUS=$(echo "$HARDWARE" | jq -r .status)
+
+	if [ -n "$STATUS" ]; then
+		if [ "$STATUS" == "ok" ]; then
+		    return 0
+		else
+		    return 1
+		fi
+	fi
+}
+
+function gpu_overclock()
+{
+    sudo /root/mrminer/tool/overclock > /dev/null 2>&1 &
+    return 0
+}
+
+function gpu_fanspeed()
+{
+	sudo /root/mrminer/tool/fanspeed > /dev/null 2>&1 &
+	return 0
+}
+
+function generate_monitor()
+{
+	sudo /root/mrminer/tool/monitor start > /dev/null 2>&1 &
+	return 0
+}
+
+
+function backup_amd_tables()
+{
+	sudo rm -rf /run/mrminer/amd_tables && sudo mkdir /run/mrminer/amd_tables
+	i=0
+	while [ $i -le 14 ]; do
+	    if [ -e "/sys/class/drm/card$i/device/pp_table" ]; then
+	        sudo mkdir /run/mrminer/amd_tables/card$i
+	        sudo cp /sys/class/drm/card$i/device/pp_table /run/mrminer/amd_tables/card$i/pp_table
+			sync
+	    fi
+	    i=$[i + 1]
+	done
+}
+function logo()
+{
+	sudo cat /root/mrminer/lib/logo
+}
+function text()
+{
+	local color=${1}
+	shift
+	local text="${@}"
+	case ${color} in
+    	red    ) tput setaf 1 ; tput bold ;;
+    	green  ) tput setaf 2 ; tput bold ;;
+    	yellow ) tput setaf 3 ; tput bold ;;
+    	blue   ) tput setaf 4 ; tput bold ;;
+    	purple ) tput setaf 5 ; tput bold ;;
+		cyan   ) tput setaf 6 ; tput bold ;;
+		white  ) tput setaf 7 ; tput bold ;;
+	esac
+	echo -en "${text}"
+	tput sgr0
+}

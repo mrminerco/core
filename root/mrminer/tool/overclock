@@ -1,0 +1,109 @@
+#!/bin/bash
+
+. /run/mrminer/globals.inc
+. /run/mrminer/settings.inc
+
+
+IFS=',' read -r -a Cores <<< "$CORE"
+IFS=',' read -r -a Mems <<< "$MEMORY"
+IFS=',' read -r -a Pows <<< "$POWER"
+
+## AMD OVERCLOCK
+if [ "$GPU_COUNT_AMD" -gt 0 ]; then
+
+    # Fix rest of values
+    [ -n "$Cores" ] &&
+    for (( x=${#Cores[@]}; x < $GPU_COUNT_AMD; ++x )); do
+      Cores[$x]=${Cores[$x-1]}
+    done
+    [ -n "$Mems" ] &&
+    for (( x=${#Mems[@]}; x < $GPU_COUNT_AMD; ++x )); do
+      Mems[$x]=${Mems[$x-1]}
+    done
+    [ -n "$Pows" ] &&
+    for (( x=${#Pows[@]}; x < $GPU_COUNT_AMD; ++x )); do
+      Pows[$x]=${Pows[$x-1]}
+    done
+
+    # Overclock Loop
+    i=0
+    CARDS=$(ls -d1 /sys/class/drm/card*/device/pp_table | grep -Poi "(\d+)" | xargs)
+    for ID in $CARDS; do
+
+      parameters=''
+      cp /run/mrminer/amd_tables/card$ID/pp_table /sys/class/drm/card$ID/device/pp_table && sleep 0.2
+      echo manual > /sys/class/drm/card$ID/device/power_dpm_force_performance_level
+
+      MEMSTATE=$(/root/mrminer/tool/ohgodatool -i $ID --show-mem | grep -o -P "Memory state [0-9]" | grep -o "[[:digit:]]" | tail -n 1)
+
+      if [ -n "${Cores[$i]}" ] && [ "${Cores[$i]}" -ge "300" ] && [ "${Cores[$i]}" -le "1600" ]; then
+          parameters+=" --core-state $POWER --core-clock ${Cores[$i]}"
+      fi
+      if [ -n "${Mems[$i]}" ] && [ "${Mems[$i]}" -ge "300" ] && [ "${Mems[$i]}" -le "3000" ]; then
+          parameters+=" --mem-state $MEMSTATE --mem-clock ${Mems[$i]}"
+      fi
+      if [ "$VOLT" -ge "800" ] && [ "$VOLT" -le "1300" ]; then
+          parameters+=" --volt-state $POWER --vddc-table-set $VOLT"
+      fi
+
+      [ -n "$parameters" ] && sudo /root/mrminer/tool/ohgodatool -i $ID $parameters
+      [ -n "$POWER" ] && echo $POWER > /sys/class/drm/card$ID/device/pp_dpm_sclk
+      [ -n "$MEMSTATE" ] && echo $MEMSTATE > /sys/class/drm/card$ID/device/pp_dpm_mclk
+
+      i=$[i + 1]
+
+    done
+
+## NVIDIA OVERCLOCK
+else
+
+    GPU_COUNT_NV=$(nvidia-smi -L | grep GPU | wc -l)
+
+    # sudo service lightdm restart
+
+    # Fix rest of values
+    [ -n "$Cores" ] &&
+    for (( x=${#Cores[@]}; x < $GPU_COUNT_NV; ++x )); do
+        Cores[$x]=${Cores[$x-1]}
+    done
+    [ -n "$Mems" ] &&
+    for (( x=${#Mems[@]}; x < $GPU_COUNT_NV; ++x )); do
+        Mems[$x]=${Mems[$x-1]}
+    done
+    [ -n "$Pows" ] &&
+    for (( x=${#Pows[@]}; x < $GPU_COUNT_NV; ++x )); do
+        Pows[$x]=${Pows[$x-1]}
+    done
+
+    export DISPLAY=:0
+    export XAUTHORITY=/var/run/lightdm/root/:0
+
+    sudo nvidia-smi -pm 1
+
+    # Overclock Loop
+    for (( i=0; i<$GPU_COUNT_NV; ++i )); do
+
+        parameters=''
+        parameters+="-a [gpu:$i]/GPUPowerMizerMode=1"
+
+        GPU=$(sudo nvidia-smi -i $i --query-gpu=gpu_name --format=csv,noheader)
+        TYPE=3
+        if [[ $GPU =~ "1050" ]]; then TYPE=2
+        elif [[ $GPU =~ "P106-100" ]]; then TYPE=2
+        elif [[ $GPU =~ "P106-090" ]]; then TYPE=1
+        elif [[ $GPU =~ "P104-100" ]]; then TYPE=1
+        elif [[ $GPU =~ "P102-100" ]]; then TYPE=1
+        fi
+
+        [ -n "${Pows[$i]}" ] && nvidia-smi -i $i -pl ${Pows[$i]} &
+        [ -n "${Cores[$i]}" ] && parameters+=" -a [gpu:$i]/GPUGraphicsClockOffset[$TYPE]=${Cores[$i]}"
+        [ -n "${Mems[$i]}" ] && parameters+=" -a [gpu:$i]/GPUMemoryTransferRateOffset[$TYPE]=${Mems[$i]}"
+
+        sudo nvidia-settings $parameters &
+        wait
+
+    done
+
+    wait && wait && sleep 3
+
+fi

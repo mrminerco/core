@@ -1,0 +1,186 @@
+#!/bin/bash 
+
+sleep 2
+
+. /root/mrminer/lib/functions
+
+sleep 3
+
+if [ -e "/run/mrminer/globals.inc" ]; then
+ 	. /run/mrminer/globals.inc
+fi
+
+OK=$(text green "OK")
+FAIL=$(text red "FAIL")
+
+
+# Starting
+text green "############################################################################\n"
+
+logo
+
+text green "############################################################################\n\n"
+
+sleep 1
+
+text yellow "Configuration \n\n"
+
+
+OK=$(text green "OK")
+FAIL=$(text red "FAIL")
+
+sleep 1
+
+
+# Connection Test
+
+printf "[   ] Connection Test \r"
+sleep 0.1
+x=1
+while [[ $x -le 90 ]]; do
+	printf "[   ] Connection Test ( Waiting Network... %ss )\r" $(text yellow "$x")
+	LanIP=$(ifconfig | sed -En 's/127.0.0.1//;s/.*inet (addr:)?(([0-9]*\.){3}[0-9]*).*/\2/p')
+	if [ -n "$LanIP" ]; then
+		x=100
+	fi
+	x=$((x + 1))
+	sleep 1.2
+done
+
+printf "[   ] Connection Test \r"
+if connection_test; then
+	printf "[ $OK ] Connection Test\n\n"
+else
+	printf "[ $FAIL ] Connection Test\n\n"
+fi
+
+sleep 0.5
+
+printf "[   ] Update Check \r"
+if update_check; then
+	printf "[ $OK ] Update Check\n\n"
+else
+	printf "[ $FAIL ] Update Check\n\n"
+fi
+sleep 0.5
+
+printf "[   ] Server Registration \r"
+if register_server; then
+	printf "[ $OK ] Server Registration\n\n"
+else
+	printf "[ $FAIL ] Server Registration\n\n"
+fi
+sleep 0.5
+
+printf "[   ] Config Download \r"
+if get_config; then
+	printf "[ $OK ] Config Download\n\n"
+else
+	printf "[ $FAIL ] Config Download\n\n"
+fi
+sleep 0.5
+
+printf "[   ] Config Assign \r"
+if assign_config; then
+	printf "[ $OK ] Config Assign\n\n"
+else
+	printf "[ $FAIL ] Config Assign\n\n"
+fi
+sleep 0.5
+
+text yellow "Tuning \n\n"
+
+printf "[   ] Hardware Info \r"
+if send_hardware; then
+	printf "[ $OK ] Hardware Info\n\n"
+else
+	printf "[ $FAIL ] Hardware Info\n\n"
+fi
+sleep 0.5
+
+printf "[   ] GPU Overclock \r"
+if gpu_overclock; then
+	printf "[ $OK ] GPU Overclock\n\n"
+else
+	printf "[ $FAIL ] GPU Overclock\n\n"
+fi
+sleep 0.5
+
+printf "[   ] Auto Fan Speed \r"
+if gpu_fanspeed; then
+	printf "[ $OK ] Auto Fan Speed\n\n"
+else
+	printf "[ $FAIL ] Auto Fan Speed\n\n"
+fi
+sleep 0.5
+
+#printf "[   ] Creating Web Monitor \r"
+#if generate_monitor; then
+#	printf "[ $OK ] Creating Web Monitor\n\n"
+#else
+#	printf "[ $FAIL ] Creating Web Monitor\n\n"
+#fi
+#sleep 0.5
+
+text yellow "Settings \n\n"
+
+if [ -n "/run/mrminer/settings.inc" ]; then
+	source /run/mrminer/settings.inc
+fi
+
+printf "%-15s : %s \n" "Core Mhz" $(text cyan "$CORE")
+printf "%-15s : %s \n" "Memory Mhz" $(text cyan "$MEMORY")
+printf "%-15s : %s \n" "Power Stage" $(text cyan "$POWER")
+printf "%-15s : %s%s \n" "Volt Stage" $(text cyan "$VOLT") $(text cyan "mV")
+printf "%-15s : %s \n" "Target Temp" $(text cyan "$TEMP°C")
+printf "%-15s : %s \n\n" "Min Fan Speed" $(text cyan "$FAN%")
+
+
+printf "Manage your rig by logging into %s with your e-mail: %s\n\n" $(text cyan "mrminer.co") $(text cyan "$EMAIL")
+
+
+text green "############################################################################\n\n"
+
+text yellow "Miner Commmand\n\n"
+
+echo "$MINER_PATH $MINER_PARAMETER"
+printf "\n\n"
+
+sleep 1
+
+export DISPLAY=:0
+export GPU_MAX_ALLOC_PERCENT=100
+export GPU_MAX_HEAP_SIZE=100
+export GPU_SINGLE_ALLOC_PERCENT=100
+export GPU_USE_SYNC_OBJECTS=1
+export GPU_FORCE_64BIT_PTR=1
+export CUDA_DEVICE_ORDER=PCI_BUS_ID
+
+
+if [ "$GPU_COUNT_AMD" -gt 0 ]; then
+
+	export LD_LIBRARY_PATH=/opt/amdgpu-pro/lib/x86_64-linux-gnu
+
+else 
+
+	export LD_LIBRARY_PATH=/opt/cuda
+
+fi
+
+sleep 1
+
+while true; do
+
+    cd $MINER_FOLDER
+
+    if [ "$MINER_FOLDER" != "null" ]; then
+        sudo $MINER_PATH $MINER_PARAMETER
+        echo "Problem found, miner reloading..."
+        sleep 5
+    else
+        echo "Config/Miner not found on this rig. Please change your rig's config from Mr.Miner Dashboard"
+        sleep 5
+    fi
+
+done
+

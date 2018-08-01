@@ -1,0 +1,83 @@
+#!/bin/bash
+
+
+function usage()
+{
+	printf "Monitor Control\n\n"
+	printf "Usage: monitor [OPTION]\n\n"
+	printf "start: Start Monitor Service\n"
+	printf "stop: Stop Monitor Service\n"
+	printf "restart: Restart Monitor Service\n"
+
+}
+
+function start()
+{
+
+	SCREEN=$(screen -ls monitor | grep monitor | wc -l)
+	[ "$SCREEN" -gt 1 ] && echo "Monitor service already running..." && exit
+
+	echo "Monitor Starting..."
+	# screen -dm -S monitor bash -c "teleconsole"
+
+
+	if [ -e "/home/mrminer/monitor.log" ]; then
+	 	sudo rm -rf /home/mrminer/monitor.log
+	fi
+
+	screen -dm -c /home/mrminer/screenrc.monitor
+
+	sleep 10
+	
+	screen -x monitor -X stuff "tail -f /home/mrminer/mrminer.log^M"
+
+	source /run/mrminer/globals.inc
+
+	TELELOG=$(cat /home/mrminer/monitor.log | grep -m1 "Your Teleconsole ID: ")
+
+	if [[ ! -z $TELELOG ]]; then
+		
+		TELELOG=$(sed "s,$(printf '\033')\\[[0-9;]*[a-zA-Z],,g" <<< "$TELELOG")
+		MONITOR_ID=$(awk '{print $NF}' <<< "$TELELOG")
+		sleep 0.5
+		curl -k -s -d api="$API" -d email="$EMAIL" -d monitor="$MONITOR_ID" $URL/monitor
+
+	fi
+
+}
+
+
+function stop()
+{
+	screens=`screen -ls monitor | grep -E "[0-9]+\.monitor" | cut -d. -f1 | awk '{print $1}'`
+
+	if [[ -z $screens ]]; then
+		echo "No monitor screens found"
+	else
+		for pid in $screens; do
+			echo "Stopping screen session: $pid.monitor"
+			screen -S $pid -X quit
+		done
+	fi
+}
+
+
+
+case $1 in
+	start)
+		start
+	;;
+	stop)
+		stop
+	;;
+	restart)
+
+		echo "Restarting miner"
+		stop
+		sleep 1
+		start
+	;;
+	*)
+		usage
+	;;
+esac

@@ -1,0 +1,27 @@
+#!/bin/bash
+
+GLOBAL_VERSION=$(curl -k -s http://mrminer.co/api/version)
+
+echo ------------------------------------------------------
+echo "Update running..."
+echo ------------------------------------------------------
+
+dpkg --configure -a
+
+apt-get update -o Dir::Etc::sourcelist="sources.list.d/mrminer.list" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"
+exitcode=$?
+[[ $exitcode -ne 0 ]] && echo "Repository update failed" && exit $exitcode
+
+
+apt-get install -y mrminer=$GLOBAL_VERSION
+exitcode=$?
+[[ $exitcode -ne 0 ]] && echo "Upgrade failed" && exit $exitcode
+
+apt-get -y autoremove
+apt-get clean
+
+echo ------------------------------------------------------
+echo "Update finished."
+echo ------------------------------------------------------
+
+exit 0

@@ -1,0 +1,154 @@
+#!/bin/bash
+
+MINER=$(cat /run/mrminer/settings.inc | grep MINER= | cut -d = -f 2)
+GPU_COUNT_AMD=$(cat /run/mrminer/globals.inc | grep GPU_COUNT_AMD | cut -d = -f 2)
+GPU_COUNT_NV=$(cat /run/mrminer/globals.inc | grep GPU_COUNT_NV | cut -d = -f 2)
+
+STATS='{}'
+
+case $MINER in
+	*claymoreeth*)
+		CLAYMORE=`echo '{"id":0,"jsonrpc":"2.0","method":"miner_getstat1"}' | nc localhost 3333`
+		HASH=`echo "$CLAYMORE" | jq -r .result[2] | cut -d ';' -f 1`
+		GPU_HASH=`echo "$CLAYMORE" | jq -r .result[3]`
+		HASH_DUAL=`echo "$CLAYMORE" | jq -r .result[4] | cut -d ';' -f 1`
+		GPU_HASH_DUAL=`echo "$CLAYMORE" | jq -r .result[5]`
+		HASH_UNIT="MH"
+	;;
+	*claymorezec*)
+		CLAYMORE=`echo '{"id":0,"jsonrpc":"2.0","method":"miner_getstat1"}' | nc localhost 3333`
+		HASH=`echo "$CLAYMORE" | jq -r .result[2] | cut -d ';' -f 1`
+		GPU_HASH=`echo "$CLAYMORE" | jq -r .result[3]`
+		HASH_DUAL=`echo "$CLAYMORE" | jq -r .result[4] | cut -d ';' -f 1`
+		GPU_HASH_DUAL=`echo "$CLAYMORE" | jq -r .result[5]`
+		HASH_UNIT="H"
+	;;
+	*claymorexmr*)
+		CLAYMORE=`echo '{"id":0,"jsonrpc":"2.0","method":"miner_getstat1"}' | nc localhost 3333`
+		HASH=`echo "$CLAYMORE" | jq -r .result[2] | cut -d ';' -f 1`
+		GPU_HASH=`echo "$CLAYMORE" | jq -r .result[3]`
+		HASH_DUAL=`echo "$CLAYMORE" | jq -r .result[4] | cut -d ';' -f 1`
+		GPU_HASH_DUAL=`echo "$CLAYMORE" | jq -r .result[5]`
+		HASH_UNIT="H"
+	;;
+	*optiminer*)
+		OPTIMINER=$(curl -k -s localhost:3333)
+		HASH=$(echo "$OPTIMINER" | jq '.solution_rate | .Total | .["5s"]')
+		GPU_HASH=$(echo "$OPTIMINER" | jq '.solution_rate | .[] | ."5s"' | sed '$d' | tr '\n' ';' | sed 's/.$//')
+		HASH_DUAL=""
+		GPU_HASH_DUAL=""
+		HASH_UNIT="H"
+	;;
+	*ethminer*)
+		ETHMINER=`echo '{"id":0,"jsonrpc":"2.0","method":"miner_getstat1"}' | socat stdio tcp-connect:127.0.0.1:3333`
+		HASH=`echo "$ETHMINER" | jq -r .result[2] | cut -d ';' -f 1`
+		GPU_HASH=`echo "$ETHMINER" | jq -r .result[3]`
+		HASH_DUAL=`echo "$ETHMINER" | jq -r .result[4] | cut -d ';' -f 1`
+		GPU_HASH_DUAL=`echo "$ETHMINER" | jq -r .result[5]`
+		HASH_UNIT="MH"
+	;;
+	*ccminer*)
+		CCMINER=`echo "summary" | nc localhost 4068 | tr -d "\0"`
+		CCMINERGPU=`echo "threads" | nc localhost 4068 | tr -d "\0"`
+		HASH=`echo $CCMINER | grep -o -P ';KHS=(\d+\.\d+)' | cut -c6-`
+		GPU_HASH=`echo $CCMINERGPU | tr '|' '\n' | grep -o -P 'KHS=(\d+\.\d+)' | cut -c5- | tr '\n' ';'`
+		HASH_DUAL=""
+		GPU_HASH_DUAL=""
+		HASH_UNIT="KH"
+		# HASH=`echo $CCMINER | grep -o -P ';KHS.{0,5}' | cut -c6- | awk '{print $1*1000}'`
+	;;
+	*ewbf*)
+		EWBF=`echo '{"id":1, "method":"getstat"}' | nc localhost 42000`
+		HASH=`echo $EWBF | jq '.result | .[] | ."speed_sps"' | awk '{s+=$1} END {print s}'`
+		GPU_HASH=`echo $EWBF | jq '.result | .[] | ."speed_sps"' | tr '\n' ';'`
+		HASH_DUAL=""
+		GPU_HASH_DUAL=""
+		HASH_UNIT="H"
+	;;
+	*zm*)
+		ZM=`echo '{"id":1, "method":"getstat"}' | nc localhost 2222`
+		HASH=`echo $ZM | jq '.result | .[] | ."sol_ps"' | awk '{s+=$1} END {print s}'`
+		GPU_HASH=`echo $ZM | jq '.result | .[] | ."sol_ps"' | tr '\n' ';'`
+		HASH_DUAL=""
+		GPU_HASH_DUAL=""
+		HASH_UNIT="H"
+	;;
+	*bminer*)
+		BMINER=`curl 127.0.0.1:1880/api/status`
+		HASH=`echo $BMINER | jq '.miners | .[] | ."solver" | ."solution_rate"' | awk '{s+=$1} END {print s}'`
+		GPU_HASH=`echo $BMINER | jq '.miners | .[] | ."solver" | ."solution_rate"' | tr '\n' ';'`
+		HASH_DUAL=""
+		GPU_HASH_DUAL=""
+		HASH_UNIT="H"
+	;;
+
+	# test
+	*aionminer*)
+		AION=`echo "status" | socat stdio tcp-connect:127.0.0.1:4444`
+		HASH=`echo $AION | jq -r .result | jq -r .speed_sps`
+		GPU_HASH=`echo $AION | jq -r .result | jq -r .speed_sps`
+		HASH_DUAL=""
+		GPU_HASH_DUAL=""
+		HASH_UNIT="H"
+	;;
+
+	# test
+	*smartminer*)
+		SMART=`tail -n 3 ~/mrminer.log`
+		HASH=`echo $SMART | grep -o -P '(\d+\.\d+)'`
+		GPU_HASH=`echo $SMART | grep -o -P '(\d+\.\d+)'`
+		HASH_DUAL=""
+		GPU_HASH_DUAL=""
+		HASH_UNIT="H"
+	;;
+
+	# test
+	*xmrstak*)
+		XMRSTAK=`curl -k -s 127.0.0.1:3333/api.json`
+		HASH=`echo $XMRSTAK | jq -r '.hashrate.total[0]'`
+		GPU_HASH=`echo $XMRSTAK | jq '.hashrate | ."threads" | .[] | .[0]' | tr '\n' ';'`
+		HASH_DUAL=""
+		GPU_HASH_DUAL=""
+		HASH_UNIT="H"
+	;;
+
+	
+esac
+
+
+
+
+
+
+STATS=`echo "$STATS" | jq ".total_hash=\"$HASH\""`
+STATS=`echo "$STATS" | jq ".total_hash_dual=\"$HASH_DUAL\""`
+STATS=`echo "$STATS" | jq ".gpu_hash=\"$GPU_HASH\""`
+STATS=`echo "$STATS" | jq ".gpu_hash_dual=\"$GPU_HASH_DUAL\""`
+STATS=`echo "$STATS" | jq ".hash_unit=\"$HASH_UNIT\""`
+
+if [ "$GPU_COUNT_AMD" -gt "0" ]; then
+
+    CARDS_AMD=$(ls -d1 /sys/class/drm/card*/device/pp_table | grep -Poi "(\d+)" | xargs)
+    for ID in $CARDS_AMD; do
+    	STATS=`echo "$STATS" | jq ".core += \"$(cat /sys/class/drm/card$ID/device/pp_dpm_sclk  | grep "*" | awk '{print $2}' | tr -d 'Mhz');\""`
+    	STATS=`echo "$STATS" | jq ".mem += \"$(cat /sys/class/drm/card$ID/device/pp_dpm_mclk  | grep "*" | awk '{print $2}' | tr -d 'Mhz');\""`
+    	STATS=`echo "$STATS" | jq ".temp += \"$(sudo /root/mrminer/tool/ohgodatool --show-temp -i $ID | tr -d 'C');\""`
+    	STATS=`echo "$STATS" | jq ".fan += \"$(sudo /root/mrminer/tool/ohgodatool --show-fanspeed -i $ID | tr -d '%');\""`
+      	STATS=`echo "$STATS" | jq ".watt += \"$(cat /sys/kernel/debug/dri/$ID/amdgpu_pm_info | grep "average GPU" | cut -b 2-9 | tr -d ' W');\""`
+	done
+
+else
+
+	CARDS_NVIDIA=$(sudo nvidia-smi -L | awk '{print $2}' | grep -Poi "(\d+)" | xargs)
+	for ID in $CARDS_NVIDIA; do
+    	STATS=`echo "$STATS" | jq ".core += \"$(nvidia-smi -i $ID --format=noheader,csv --query-gpu=clocks.gr | tr -d ' MHz');\""`
+    	STATS=`echo "$STATS" | jq ".mem += \"$(nvidia-smi -i $ID --format=noheader,csv --query-gpu=clocks.mem | tr -d ' MHz');\""`
+    	STATS=`echo "$STATS" | jq ".temp += \"$(nvidia-smi -i $ID --format=noheader,csv --query-gpu=temperature.gpu);\""`
+    	STATS=`echo "$STATS" | jq ".fan += \"$(nvidia-smi -i $ID --format=noheader,csv --query-gpu=fan.speed | tr -d ' %');\""`
+      	STATS=`echo "$STATS" | jq ".watt += \"$(nvidia-smi -i $ID --format=noheader,csv --query-gpu=power.draw | tr -d ' W');\""`
+	done
+	
+fi
+
+
+echo $STATS

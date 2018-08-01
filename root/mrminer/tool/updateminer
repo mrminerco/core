@@ -1,0 +1,22 @@
+#!/bin/bash
+
+sudo git --work-tree=/root/miner --git-dir=/root/miner/.git checkout -- .
+sudo git --work-tree=/root/miner --git-dir=/root/miner/.git clean -f
+
+if sudo git --work-tree=/root/miner --git-dir=/root/miner/.git remote update; then
+
+  Local=$(sudo git --work-tree=/root/miner --git-dir=/root/miner/.git rev-list --max-count=1 master)
+  echo "Local ID: $Local"
+  Origin=$(sudo git --work-tree=/root/miner --git-dir=/root/miner/.git rev-list --max-count=1 origin/master)
+  echo "Origin ID: $Origin"
+
+  if [ "$Local" != "$Origin" ]; then
+      sudo git --work-tree=/root/miner --git-dir=/root/miner/.git checkout -- .
+      sleep 0.5
+      sudo git --work-tree=/root/miner --git-dir=/root/miner/.git pull origin master
+      sync
+      sudo chmod -R +x /root/miner/*
+  else
+	echo "Up-to-date!"
+  fi
+fi

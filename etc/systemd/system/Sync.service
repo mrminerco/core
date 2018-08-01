@@ -1,0 +1,10 @@
+[Unit]
+Description=Mr.Miner Sync Service
+After=Miner.service
+
+[Service]
+Type=simple
+ExecStart=/root/mrminer/boot/sync &
+
+[Install]
+WantedBy=graphical.target

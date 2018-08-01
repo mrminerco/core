@@ -1,0 +1,15 @@
+#!/bin/bash
+
+
+function screen_start()
+{
+	while true;
+	do
+		screen -x mrminer
+		sleep 1
+	done
+}
+
+
+DISPLAY=:0 urxvt -ls -hold -geometry 70x80-0+0 -e sh -c "while true; do screen -x mrminer; sleep 1; done"
+

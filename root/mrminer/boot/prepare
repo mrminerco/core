@@ -1,0 +1,12 @@
+#!/bin/bash
+
+. /root/mrminer/lib/functions
+
+prepare_folders
+
+generate_globals | sudo tee /run/mrminer/globals.inc > /dev/null 2>&1 &
+
+sleep 0.5
+
+
+

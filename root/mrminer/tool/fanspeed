@@ -1,0 +1,31 @@
+#!/bin/bash
+
+. /run/mrminer/globals.inc
+. /run/mrminer/settings.inc
+
+if [ "$GPU_COUNT_AMD" -gt 0 ]; then
+
+	sudo pkill -f fan.py
+	nohup /root/mrminer/tool/fan.py -T $TEMP -m $FAN -u 5 > /dev/null 2>&1 &
+
+else 
+
+    export DISPLAY=:0
+    export XAUTHORITY=/var/run/lightdm/root/:0
+
+    sudo nvidia-smi -pm 1
+
+    # Overclock Loop
+    for (( i=0; i<$GPU_COUNT_NV; ++i )); do
+
+		nvidia-settings -a "[gpu:$i]/GPUPowerMizerMode=1"
+		nvidia-settings -a "[gpu:$i]/GPUFanControlState=1"
+		nvidia-settings -a "[fan:$i]/GPUTargetFanSpeed=$FAN"
+
+        wait
+
+    done
+
+    wait && wait && sleep 3
+
+fi

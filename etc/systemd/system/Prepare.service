@@ -1,0 +1,10 @@
+[Unit]
+Description=Mr.Miner Prepare Service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/root/mrminer/boot/prepare
+
+[Install]
+WantedBy=graphical.target
